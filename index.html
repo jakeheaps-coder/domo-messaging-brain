@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Domo Messaging Brain — Architecture Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --domo-blue: #99CCEE;
+  --domo-blue-dark: #7BB8E0;
+  --domo-blue-deeper: #5A9FCC;
+  --accent-orange: #FF9922;
+  --accent-orange-hover: #E8891F;
+  --accent-purple: #776CB0;
+  --accent-pink: #C179BD;
+  --accent-mint: #ADD4C1;
+  --accent-light-pink: #ECA4DD;
+  --neutral-50: #F1F6FA;
+  --neutral-100: #DCE4EA;
+  --neutral-200: #B7C1CB;
+  --neutral-600: #68737F;
+  --neutral-900: #3F454D;
+  --font-primary: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --shadow-sm: 0 1px 3px rgba(63,69,77,0.08), 0 1px 2px rgba(63,69,77,0.06);
+  --shadow-md: 0 4px 12px rgba(63,69,77,0.1), 0 2px 4px rgba(63,69,77,0.06);
+  --shadow-lg: 0 8px 20px rgba(63,69,77,0.08), 0 4px 8px rgba(63,69,77,0.04);
+  --shadow-blue-glow: 0 4px 20px rgba(153, 204, 238, 0.3);
+  --shadow-orange-glow: 0 4px 20px rgba(255, 153, 34, 0.3);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --ease-smooth: cubic-bezier(0.83, 0, 0.17, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+body {
+  font-family: var(--font-primary);
+  color: var(--neutral-900);
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+h1 { font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.5rem, 3.5vw, 2.25rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+h3 { font-size: clamp(1.125rem, 2vw, 1.375rem); font-weight: 700; line-height: 1.3; }
+h4 { font-size: 1rem; font-weight: 600; line-height: 1.4; }
+p { font-weight: 400; line-height: 1.7; color: var(--neutral-600); }
+a { color: var(--domo-blue-deeper); text-decoration: none; }
+code { font-size: 0.8125rem; background: var(--neutral-50); padding: 0.1rem 0.4rem; border-radius: 4px; }
+
+@keyframes domoFadeInUp {
+  from { opacity: 0; transform: translateY(2rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+.anim-target {
+  opacity: 0;
+  transform: translateY(2rem);
+  transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo);
+}
+.anim-target.visible { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .anim-target { opacity: 1; transform: none; }
+}
+
+/* NAV */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--neutral-100);
+  transition: box-shadow 0.3s var(--ease-smooth);
+}
+.nav.scrolled { box-shadow: var(--shadow-md); }
+.nav-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;
+  height: 64px; display: flex; align-items: center; justify-content: space-between;
+}
+.nav-logo {
+  display: flex; align-items: center; gap: 0.75rem;
+  font-weight: 700; font-size: 0.9375rem; color: var(--neutral-900);
+}
+.nav-logo svg { flex-shrink: 0; }
+.nav-logo-sep { opacity: 0.4; font-weight: 300; margin: 0 0.25rem; }
+.nav-links { display: flex; gap: 0.25rem; }
+.nav-links a {
+  padding: 0.4rem 0.75rem; font-size: 0.8125rem; font-weight: 600;
+  color: var(--neutral-600); border-radius: var(--radius-sm);
+  transition: all 0.25s var(--ease-smooth);
+}
+.nav-links a:hover { color: var(--neutral-900); background: var(--neutral-50); }
+.nav-links a.active { color: var(--domo-blue-deeper); background: rgba(153,204,238,0.12); }
+.nav-mobile-btn {
+  display: none; background: none; border: none; cursor: pointer;
+  padding: 0.5rem; color: var(--neutral-900);
+}
+@media (max-width: 768px) {
+  .nav-links {
+    display: none; position: absolute; top: 64px; left: 0; right: 0;
+    background: white; border-bottom: 1px solid var(--neutral-100);
+    flex-direction: column; padding: 0.75rem; box-shadow: var(--shadow-lg);
+  }
+  .nav-links.open { display: flex; }
+  .nav-mobile-btn { display: block; }
+}
+
+/* HERO */
+.hero {
+  position: relative; min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, var(--domo-blue) 0%, var(--domo-blue-dark) 60%, var(--domo-blue-deeper) 100%);
+  overflow: hidden;
+}
+.hero-canvas { position: absolute; inset: 0; z-index: 1; }
+.hero-overlay {
+  position: absolute; inset: 0; z-index: 2;
+  background: radial-gradient(ellipse at 50% 40%, transparent 0%, rgba(90,159,204,0.3) 100%);
+}
+.hero-content {
+  position: relative; z-index: 3; text-align: center;
+  max-width: 800px; padding: 2rem 1.5rem;
+  animation: domoFadeInUp 1s var(--ease-out-expo) 0.3s both;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 100px; font-size: 0.75rem; font-weight: 600; color: white;
+  letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 1.5rem;
+  backdrop-filter: blur(4px);
+}
+.hero-badge-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent-orange); animation: pulse-ring 2s ease-out infinite;
+  box-shadow: 0 0 8px var(--accent-orange);
+}
+.hero h1 { color: white; margin-bottom: 1rem; font-size: clamp(2.25rem, 6vw, 3.75rem); }
+.hero p {
+  color: rgba(255,255,255,0.85); font-size: clamp(1rem, 2vw, 1.25rem);
+  font-weight: 300; max-width: 600px; margin: 0 auto 2rem; line-height: 1.6;
+}
+.hero-cta {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.875rem 2rem; background: var(--accent-orange);
+  color: white; font-weight: 600; font-size: 0.9375rem; font-family: var(--font-primary);
+  border: none; border-radius: var(--radius-md); cursor: pointer;
+  transition: all 0.3s var(--ease-smooth); text-decoration: none;
+}
+.hero-cta:hover { background: var(--accent-orange-hover); transform: translateY(-2px); box-shadow: var(--shadow-orange-glow); }
+.hero-scroll-hint {
+  position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%);
+  z-index: 3; animation: float 3s ease-in-out infinite; color: rgba(255,255,255,0.5);
+}
+
+/* SECTIONS */
+.section { padding: 5rem 1.5rem; max-width: 1200px; margin: 0 auto; }
+.section-alt { background: var(--neutral-50); }
+.section-header { text-align: center; margin-bottom: 3.5rem; }
+.section-number {
+  display: inline-block; font-size: 0.6875rem; font-weight: 800;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--domo-blue-deeper);
+  background: rgba(153,204,238,0.15); padding: 0.3rem 0.75rem;
+  border-radius: 100px; margin-bottom: 1rem;
+}
+.section-header h2 { margin-bottom: 0.75rem; }
+.section-header p { max-width: 640px; margin: 0 auto; font-size: 1.0625rem; }
+
+/* ARCHITECTURE FLOW */
+.arch-flow-container {
+  background: var(--neutral-900); border-radius: var(--radius-xl);
+  padding: 2.5rem 2rem; overflow: hidden; position: relative;
+}
+.arch-flow-container::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 30% 50%, rgba(153,204,238,0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+.arch-flow { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: 1rem 0 2rem; -webkit-overflow-scrolling: touch; }
+.arch-node {
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: center;
+  text-align: center; width: 140px; transition: transform 0.3s var(--ease-smooth);
+}
+.arch-node:hover { transform: translateY(-4px); }
+.arch-icon-wrap {
+  width: 64px; height: 64px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 0.75rem; transition: box-shadow 0.3s var(--ease-smooth); position: relative;
+}
+.arch-node:hover .arch-icon-wrap { box-shadow: var(--shadow-blue-glow); }
+.arch-icon-wrap svg { width: 28px; height: 28px; }
+.arch-node h4 { font-size: 0.8125rem; margin-bottom: 0.25rem; color: rgba(255,255,255,0.95); }
+.arch-node p { font-size: 0.6875rem; color: rgba(255,255,255,0.4); line-height: 1.4; }
+.arch-arrow { flex-shrink: 0; display: flex; align-items: center; padding-top: 1.25rem; color: rgba(255,255,255,0.2); }
+.arch-arrow svg { width: 32px; height: 32px; }
+.icon-docs { background: rgba(153,204,238,0.15); color: var(--domo-blue); }
+.icon-parser { background: rgba(255,153,34,0.12); color: var(--accent-orange); }
+.icon-neo4j { background: rgba(173,212,193,0.2); color: var(--accent-mint); }
+.icon-api { background: rgba(119,108,176,0.15); color: var(--accent-purple); }
+.icon-gemini { background: rgba(255,153,34,0.12); color: var(--accent-orange); }
+.icon-output { background: rgba(153,204,238,0.15); color: var(--domo-blue); }
+.icon-mcp { background: rgba(193,121,189,0.15); color: var(--accent-pink); }
+.arch-branch { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; padding-left: 2rem; }
+.arch-branch-line { width: 2px; height: 24px; background: rgba(255,255,255,0.1); margin: 0 auto; }
+
+/* DATA MODEL */
+.graph-container {
+  position: relative; background: var(--neutral-900); border-radius: var(--radius-xl);
+  padding: 2rem; min-height: 500px; overflow: hidden;
+}
+.graph-container::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at 20% 30%, rgba(153,204,238,0.06) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(255,153,34,0.04) 0%, transparent 40%);
+  pointer-events: none;
+}
+.graph-canvas { width: 100%; height: 500px; display: block; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; padding-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 1.5rem; }
+.graph-legend-item {
+  display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem;
+  color: rgba(255,255,255,0.5); cursor: pointer; padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm); transition: all 0.2s;
+}
+.graph-legend-item:hover { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.8); }
+.graph-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.graph-info-panel {
+  position: absolute; top: 2rem; right: 2rem;
+  background: rgba(63,69,77,0.95); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-lg);
+  padding: 1.25rem; max-width: 280px;
+  opacity: 0; transform: translateX(1rem);
+  transition: all 0.3s var(--ease-out-expo); pointer-events: none; z-index: 5;
+}
+.graph-info-panel.active { opacity: 1; transform: translateX(0); pointer-events: auto; }
+.graph-info-panel h4 { color: white; font-size: 0.9375rem; margin-bottom: 0.375rem; }
+.graph-info-panel p { color: rgba(255,255,255,0.6); font-size: 0.8125rem; line-height: 1.5; margin-bottom: 0.5rem; }
+.graph-info-tag {
+  display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--radius-sm);
+  font-size: 0.6875rem; font-weight: 600; margin-right: 0.25rem; margin-bottom: 0.25rem;
+}
+
+/* PIPELINE */
+.pipeline { position: relative; display: flex; flex-direction: column; gap: 0; }
+.pipeline-line {
+  position: absolute; left: 28px; top: 0; bottom: 0; width: 2px;
+  background: linear-gradient(180deg, var(--domo-blue), var(--accent-orange), var(--accent-mint));
+  border-radius: 2px;
+}
+.pipeline-step { display: flex; gap: 1.5rem; padding: 1.5rem 0; position: relative; }
+.pipeline-marker {
+  flex-shrink: 0; width: 56px; height: 56px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 1.125rem; color: white;
+  position: relative; z-index: 2;
+  transition: transform 0.3s var(--ease-smooth), box-shadow 0.3s var(--ease-smooth);
+}
+.pipeline-step:hover .pipeline-marker { transform: scale(1.1); }
+.pipeline-step:nth-child(1) .pipeline-marker { background: var(--domo-blue); }
+.pipeline-step:nth-child(2) .pipeline-marker { background: var(--domo-blue-deeper); }
+.pipeline-step:nth-child(3) .pipeline-marker { background: var(--accent-orange); }
+.pipeline-step:nth-child(4) .pipeline-marker { background: var(--accent-purple); }
+.pipeline-step:nth-child(5) .pipeline-marker { background: var(--accent-mint); color: var(--neutral-900); }
+.pipeline-content {
+  background: white; border: 1px solid var(--neutral-100); border-radius: var(--radius-lg);
+  padding: 1.5rem; flex: 1; transition: all 0.3s var(--ease-smooth);
+}
+.pipeline-step:hover .pipeline-content { box-shadow: var(--shadow-lg); border-color: rgba(153,204,238,0.3); }
+.pipeline-content h3 { margin-bottom: 0.5rem; }
+.pipeline-content p { font-size: 0.9375rem; margin-bottom: 0.75rem; }
+.pipeline-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.pipeline-tag {
+  display: inline-block; padding: 0.2rem 0.625rem;
+  background: var(--neutral-50); border: 1px solid var(--neutral-100);
+  border-radius: 100px; font-size: 0.6875rem; font-weight: 600; color: var(--neutral-600);
+}
+@media (max-width: 768px) {
+  .pipeline-line { left: 20px; }
+  .pipeline-marker { width: 40px; height: 40px; font-size: 0.875rem; }
+  .pipeline-step { gap: 1rem; }
+}
+
+/* API */
+.api-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
+.api-card {
+  background: white; border: 1px solid var(--neutral-100); border-radius: var(--radius-lg);
+  overflow: hidden; transition: all 0.3s var(--ease-smooth);
+}
+.api-card:hover { box-shadow: var(--shadow-lg); border-color: rgba(153,204,238,0.3); transform: translateY(-2px); }
+.api-card-header {
+  padding: 1.25rem 1.5rem; display: flex; align-items: center;
+  justify-content: space-between; cursor: pointer; user-select: none;
+}
+.api-card-header-left { display: flex; align-items: center; gap: 0.75rem; }
+.api-method {
+  padding: 0.2rem 0.5rem; border-radius: var(--radius-sm);
+  font-size: 0.6875rem; font-weight: 800; letter-spacing: 0.03em;
+}
+.api-method.get { background: rgba(173,212,193,0.25); color: #4a9e6e; }
+.api-method.post { background: rgba(153,204,238,0.2); color: var(--domo-blue-deeper); }
+.api-card-header h4 { font-size: 0.875rem; }
+.api-card-chevron { transition: transform 0.3s var(--ease-smooth); color: var(--neutral-200); }
+.api-card.open .api-card-chevron { transform: rotate(180deg); }
+.api-card-body { max-height: 0; overflow: hidden; transition: max-height 0.4s var(--ease-smooth); }
+.api-card.open .api-card-body { max-height: 400px; }
+.api-card-body-inner { padding: 0 1.5rem 1.25rem; border-top: 1px solid var(--neutral-50); }
+.api-card-body-inner p { font-size: 0.875rem; margin-top: 0.75rem; }
+.api-endpoint {
+  display: inline-block; margin-top: 0.5rem; padding: 0.35rem 0.75rem;
+  background: var(--neutral-50); border-radius: var(--radius-sm);
+  font-size: 0.8125rem; font-weight: 600;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  color: var(--neutral-900); letter-spacing: -0.02em;
+}
+.api-category { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0; }
+.api-category-icon {
+  width: 36px; height: 36px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+}
+.api-category h3 { font-size: 1rem; }
+
+/* GEMINI */
+.gemini-flow {
+  display: grid; grid-template-columns: 1fr 80px 1fr; gap: 0; align-items: center; margin-bottom: 3rem;
+}
+@media (max-width: 768px) {
+  .gemini-flow { grid-template-columns: 1fr; gap: 1rem; }
+  .gemini-flow-arrow { transform: rotate(90deg); }
+}
+.gemini-panel {
+  background: white; border: 1px solid var(--neutral-100);
+  border-radius: var(--radius-lg); padding: 1.75rem;
+}
+.gemini-panel h3 { margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+.gemini-flow-arrow { text-align: center; color: var(--neutral-200); }
+.tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 600px) { .tool-grid { grid-template-columns: 1fr; } }
+.tool-category {
+  padding: 1rem; background: var(--neutral-50); border-radius: var(--radius-md);
+  border: 1px solid transparent; transition: all 0.3s var(--ease-smooth); cursor: default;
+}
+.tool-category:hover { border-color: rgba(153,204,238,0.3); background: white; box-shadow: var(--shadow-sm); }
+.tool-category h4 { font-size: 0.8125rem; margin-bottom: 0.375rem; display: flex; align-items: center; gap: 0.375rem; }
+.tool-category-count {
+  font-size: 0.625rem; font-weight: 800; background: var(--domo-blue); color: white;
+  padding: 0.1rem 0.35rem; border-radius: 100px;
+}
+.tool-category ul { list-style: none; font-size: 0.75rem; color: var(--neutral-600); }
+.tool-category li {
+  padding: 0.15rem 0; font-family: 'SF Mono', Monaco, monospace; font-size: 0.6875rem;
+}
+.strategy-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 2rem; }
+@media (max-width: 768px) { .strategy-steps { grid-template-columns: repeat(2, 1fr); } }
+.strategy-step {
+  text-align: center; padding: 1.25rem 1rem; background: white;
+  border: 1px solid var(--neutral-100); border-radius: var(--radius-lg);
+  transition: all 0.3s var(--ease-smooth);
+}
+.strategy-step:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.strategy-step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--domo-blue); color: white; font-weight: 800; font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+}
+.strategy-step h4 { font-size: 0.8125rem; margin-bottom: 0.25rem; }
+.strategy-step p { font-size: 0.75rem; }
+
+/* MCP */
+.mcp-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+@media (max-width: 768px) { .mcp-layout { grid-template-columns: 1fr; } }
+.mcp-card {
+  background: white; border: 1px solid var(--neutral-100); border-radius: var(--radius-lg);
+  padding: 1.75rem; transition: all 0.3s var(--ease-smooth);
+}
+.mcp-card:hover { box-shadow: var(--shadow-lg); border-color: rgba(153,204,238,0.3); }
+.mcp-card h3 { margin-bottom: 1rem; }
+.mcp-tool-list { list-style: none; }
+.mcp-tool-list li {
+  padding: 0.5rem 0; border-bottom: 1px solid var(--neutral-50);
+  font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem;
+}
+.mcp-tool-list li:last-child { border-bottom: none; }
+.mcp-tool-name {
+  font-family: 'SF Mono', Monaco, monospace; font-size: 0.8125rem; font-weight: 600;
+  color: var(--neutral-900);
+}
+.mcp-detail { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0; }
+.mcp-detail-icon {
+  width: 36px; height: 36px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.mcp-detail h4 { font-size: 0.875rem; margin-bottom: 0.125rem; }
+.mcp-detail p { font-size: 0.8125rem; }
+
+/* INFRASTRUCTURE */
+.infra-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+@media (max-width: 768px) { .infra-grid { grid-template-columns: 1fr; } }
+.infra-card {
+  background: white; border: 1px solid var(--neutral-100); border-radius: var(--radius-lg);
+  padding: 1.5rem; transition: all 0.3s var(--ease-smooth);
+}
+.infra-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); border-color: rgba(153,204,238,0.3); }
+.infra-card-icon {
+  width: 48px; height: 48px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;
+}
+.infra-card h3 { font-size: 1rem; margin-bottom: 0.375rem; }
+.infra-card p { font-size: 0.875rem; }
+.infra-specs { list-style: none; margin-top: 0.75rem; }
+.infra-specs li {
+  font-size: 0.8125rem; padding: 0.3rem 0; color: var(--neutral-600);
+  display: flex; align-items: center; gap: 0.375rem;
+}
+.infra-specs li::before {
+  content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--domo-blue); flex-shrink: 0;
+}
+.cache-diagram {
+  grid-column: 1 / -1; background: var(--neutral-900); border-radius: var(--radius-xl);
+  padding: 2rem; display: grid; grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: center; gap: 1rem; margin-top: 0.5rem;
+}
+@media (max-width: 768px) {
+  .cache-diagram { grid-template-columns: 1fr; }
+  .cache-diagram-arrow { transform: rotate(90deg); }
+}
+.cache-tier {
+  text-align: center; padding: 1.25rem;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-lg);
+  background: rgba(255,255,255,0.03);
+}
+.cache-tier h4 { color: white; font-size: 0.9375rem; margin-bottom: 0.25rem; }
+.cache-tier p { color: rgba(255,255,255,0.5); font-size: 0.8125rem; }
+.cache-tier .stat { font-size: 1.75rem; font-weight: 300; color: var(--domo-blue); margin-bottom: 0.25rem; }
+.cache-diagram-arrow { color: rgba(255,255,255,0.2); text-align: center; }
+.ttl-grid {
+  grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem; margin-top: 0.5rem;
+}
+.ttl-card {
+  background: white; border: 1px solid var(--neutral-100); border-radius: var(--radius-md);
+  padding: 1rem; text-align: center;
+}
+.ttl-card-label {
+  font-size: 0.6875rem; font-weight: 600; color: var(--neutral-200);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;
+}
+.ttl-card-value { font-size: 1.25rem; font-weight: 300; color: var(--domo-blue); }
+
+/* STATS */
+.stats-section { background: linear-gradient(180deg, var(--neutral-900) 0%, #2D3239 100%); padding: 5rem 1.5rem; }
+.stats-grid {
+  max-width: 1200px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem;
+}
+@media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+.stat-card { text-align: center; padding: 1.5rem 1rem; }
+.stat-value { font-size: 2.75rem; font-weight: 300; color: var(--domo-blue); line-height: 1.1; margin-bottom: 0.375rem; }
+.stat-label { font-size: 0.8125rem; font-weight: 600; color: rgba(255,255,255,0.5); letter-spacing: 0.03em; }
+.footer {
+  background: #2D3239; border-top: 1px solid rgba(255,255,255,0.05);
+  padding: 2rem 1.5rem; text-align: center;
+}
+.footer p { font-size: 0.8125rem; color: rgba(255,255,255,0.3); }
+.footer a { color: var(--domo-blue); }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#hero" class="nav-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="32" height="32">
+        <path fill="#99CCEE" d="M150.5,328.6c12.4,13.8,21.2,30.9,25,49.8,9.9-48.8,53-85.5,104.7-85.5s94.8,36.8,104.7,85.6v-85.6l106.8,106.8,107.1-106.8v85.6c9.9-48.8,53-85.6,104.7-85.6s79.2,24.8,96.4,60.7V0H0v292.9h70.8c31.7,0,60.1,13.8,79.7,35.7Z"/>
+        <path fill="#99CCEE" d="M703.6,506.6c-51.7,0-94.8-36.8-104.7-85.6v85.6h-36v-127.8l-71.1,71.4-71.4-71.4v127.8h-35.4v-85.6c-9.9,48.8-53,85.6-104.7,85.6s-94.8-36.7-104.7-85.5c-3.8,18.9-12.6,36-25,49.8-19.6,21.9-48,35.7-79.7,35.7H0v293.4h800v-354.2c-17.2,35.9-53.9,60.7-96.4,60.7h0Z"/>
+        <path fill="#99CCEE" d="M280.2,471c39.4,0,71.3-31.9,71.3-71.3s-31.9-71.3-71.3-71.3-71.3,31.9-71.3,71.3,31.9,71.3,71.3,71.3Z"/>
+        <path fill="#99CCEE" d="M142.1,399.7c0-37.8-29.4-68.7-66.6-71.1h-40.1v142.2h40.1c37.2-2.4,66.6-33.3,66.6-71.1h0Z"/>
+        <path fill="#99CCEE" d="M703.6,471c39.4,0,71.3-31.9,71.3-71.3s-31.9-71.3-71.3-71.3-71.3,31.9-71.3,71.3,31.9,71.3,71.3,71.3Z"/>
+        <path fill="#FFF" d="M150.5,470.8c12.4-13.8,21.2-30.9,25-49.8,9.9,48.8,53,85.5,104.7,85.5s94.8-36.8,104.7-85.6v85.6h35.4v-127.8l71.4,71.4,71.1-71.4v127.8h36v-85.6c9.9,48.8,53,85.6,104.7,85.6s79.2-24.8,96.4-60.7v-92.2c-17.2-35.9-53.9-60.7-96.4-60.7s-94.8,36.8-104.7,85.6v-85.6l-107.1,106.8-106.8-106.8v85.6c-9.9-48.8-53-85.6-104.7-85.6s-94.8,36.7-104.7,85.5c-3.8-18.9-12.6-36-25-49.8-19.6-21.9-48-35.7-79.7-35.7H0v213.7h70.8c31.7,0,60.1-13.8,79.7-35.7h0ZM703.6,328.5c39.4,0,71.3,31.9,71.3,71.3s-31.9,71.3-71.3,71.3-71.3-31.9-71.3-71.3,31.9-71.3,71.3-71.3ZM280.2,328.5c39.4,0,71.3,31.9,71.3,71.3s-31.9,71.3-71.3,71.3-71.3-31.9-71.3-71.3,31.9-71.3,71.3-71.3ZM35.4,328.6h40.1c37.2,2.4,66.6,33.3,66.6,71.1s-29.4,68.7-66.6,71.1h-40.1v-142.2h0Z"/>
+      </svg>
+      Messaging Brain <span class="nav-logo-sep">|</span> Architecture
+    </a>
+    <div class="nav-links" id="navLinks">
+      <a href="#architecture">Architecture</a>
+      <a href="#data-model">Data Model</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#api">API</a>
+      <a href="#gemini">AI Engine</a>
+      <a href="#mcp">MCP</a>
+      <a href="#infra">Infrastructure</a>
+    </div>
+    <button class="nav-mobile-btn" id="navToggle" aria-label="Toggle menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <canvas class="hero-canvas" id="heroCanvas"></canvas>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="hero-badge-dot"></span> Neo4j + Gemini AI + Cloud Run</div>
+    <h1>The Domo Messaging Brain</h1>
+    <p>How we built an AI-powered knowledge graph that makes Domo's messaging intelligent &mdash; connecting 13 documents, 197 sections, and 39,176 relationships into a queryable brain.</p>
+    <a href="#architecture" class="hero-cta">
+      Explore the Architecture
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </a>
+  </div>
+  <div class="hero-scroll-hint">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<div class="section-alt" id="architecture">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">01 &mdash; Architecture</span>
+    <h2>How It All Connects</h2>
+    <p>The complete data flow from raw markdown documents to natural language answers powered by AI.</p>
+  </div>
+  <div class="arch-flow-container anim-target">
+    <div class="arch-flow">
+      <div class="arch-node">
+        <div class="arch-icon-wrap icon-docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+        <h4>Markdown Docs</h4><p>13 messaging framework documents</p>
+      </div>
+      <div class="arch-arrow"><svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="28" y2="12"/><polyline points="22 6 28 12 22 18"/></svg></div>
+      <div class="arch-node">
+        <div class="arch-icon-wrap icon-parser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <h4>Document Parser</h4><p>YAML + Markdown extraction</p>
+      </div>
+      <div class="arch-arrow"><svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="28" y2="12"/><polyline points="22 6 28 12 22 18"/></svg></div>
+      <div class="arch-node">
+        <div class="arch-icon-wrap icon-neo4j"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><line x1="14.5" y1="10" x2="17.5" y2="6.5"/><line x1="9.5" y1="10" x2="6.5" y2="6.5"/><line x1="14.5" y1="14" x2="17.5" y2="17.5"/><line x1="9.5" y1="14" x2="6.5" y2="17.5"/></svg></div>
+        <h4>Neo4j Graph</h4><p>39,176 relationships</p>
+      </div>
+      <div class="arch-arrow"><svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="28" y2="12"/><polyline points="22 6 28 12 22 18"/></svg></div>
+      <div class="arch-node">
+        <div class="arch-icon-wrap icon-api"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <h4>REST API</h4><p>Flask on Cloud Run</p>
+      </div>
+      <div class="arch-arrow"><svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="28" y2="12"/><polyline points="22 6 28 12 22 18"/></svg></div>
+      <div class="arch-node">
+        <div class="arch-icon-wrap icon-gemini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+        <h4>Gemini AI</h4><p>21 function-calling tools</p>
+      </div>
+      <div class="arch-arrow"><svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="28" y2="12"/><polyline points="22 6 28 12 22 18"/></svg></div>
+      <div class="arch-node">
+        <div class="arch-icon-wrap icon-output"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h4>NL Answers</h4><p>Cited, structured responses</p>
+      </div>
+    </div>
+    <div class="arch-branch">
+      <div class="arch-branch-line"></div>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <div class="arch-icon-wrap icon-mcp" style="width:40px;height:40px;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div style="text-align:left;">
+          <h4 style="font-size:0.8125rem;color:rgba(255,255,255,0.9);">MCP Server &rarr; Claude Agents</h4>
+          <p style="font-size:0.6875rem;color:rgba(255,255,255,0.4);">12 tools exposed via Model Context Protocol</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- DATA MODEL -->
+<div id="data-model">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">02 &mdash; Data Model</span>
+    <h2>The Knowledge Graph Schema</h2>
+    <p>12 node types connected by 39,176 relationships form the neural network of Domo's messaging intelligence. Hover over nodes to explore.</p>
+  </div>
+  <div class="graph-container anim-target">
+    <canvas class="graph-canvas" id="graphCanvas"></canvas>
+    <div class="graph-info-panel" id="graphInfo">
+      <h4 id="graphInfoTitle">Node</h4>
+      <p id="graphInfoDesc">Description</p>
+      <div id="graphInfoTags"></div>
+    </div>
+    <div class="graph-legend" id="graphLegend"></div>
+  </div>
+</div>
+</div>
+
+<!-- PIPELINE -->
+<div class="section-alt" id="pipeline">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">03 &mdash; Ingestion Pipeline</span>
+    <h2>From Documents to Graph</h2>
+    <p>A 5-step extraction process transforms raw markdown into a rich, interconnected knowledge graph.</p>
+  </div>
+  <div class="pipeline anim-target">
+    <div class="pipeline-line"></div>
+    <div class="pipeline-step">
+      <div class="pipeline-marker">1</div>
+      <div class="pipeline-content">
+        <h3>Parse Markdown + YAML Frontmatter</h3>
+        <p>Each document starts as a Markdown file with YAML metadata. The parser performs unicode cleanup (smart quotes to regular quotes), extracts YAML frontmatter fields (title, authority, layer, audiences), and splits the content body.</p>
+        <div class="pipeline-tags">
+          <span class="pipeline-tag">Unicode Cleanup</span><span class="pipeline-tag">YAML Extraction</span><span class="pipeline-tag">Metadata Parsing</span><span class="pipeline-tag">Content Splitting</span>
+        </div>
+      </div>
+    </div>
+    <div class="pipeline-step">
+      <div class="pipeline-marker">2</div>
+      <div class="pipeline-content">
+        <h3>Extract Sections</h3>
+        <p>Headers (H1&ndash;H6) serve as natural breakpoints. The parser identifies each heading level, groups content by section, preserves section ordering, and creates individual Section nodes in the graph.</p>
+        <div class="pipeline-tags">
+          <span class="pipeline-tag">H1&ndash;H6 Detection</span><span class="pipeline-tag">Content Grouping</span><span class="pipeline-tag">Order Preservation</span><span class="pipeline-tag">197 Sections Created</span>
+        </div>
+      </div>
+    </div>
+    <div class="pipeline-step">
+      <div class="pipeline-marker">3</div>
+      <div class="pipeline-content">
+        <h3>Extract High-Priority Nodes</h3>
+        <p>Regex pattern matching and keyword lists extract critical entities: use cases ("enables you to", "helps"), industries from a predefined list, competitors by name matching, integrations (50+ connectors), and features via capability keywords.</p>
+        <div class="pipeline-tags">
+          <span class="pipeline-tag">Use Cases</span><span class="pipeline-tag">Industries</span><span class="pipeline-tag">Competitors</span><span class="pipeline-tag">Integrations</span><span class="pipeline-tag">Features</span><span class="pipeline-tag">Regex Patterns</span>
+        </div>
+      </div>
+    </div>
+    <div class="pipeline-step">
+      <div class="pipeline-marker">4</div>
+      <div class="pipeline-content">
+        <h3>Extract Structured Nodes</h3>
+        <p>YAML fields and structured sections yield additional node types: target audiences from the <code>target_audiences</code> field, pain points from labeled sections, capabilities, value propositions, and constraints from <code>what_this_is_not</code>.</p>
+        <div class="pipeline-tags">
+          <span class="pipeline-tag">Audiences</span><span class="pipeline-tag">Pain Points</span><span class="pipeline-tag">Capabilities</span><span class="pipeline-tag">Value Props</span><span class="pipeline-tag">Constraints</span>
+        </div>
+      </div>
+    </div>
+    <div class="pipeline-step">
+      <div class="pipeline-marker">5</div>
+      <div class="pipeline-content">
+        <h3>Create Relationships</h3>
+        <p>The final step wires everything together with 20+ relationship types: MENTIONS, HAS_FEATURE, ADDRESSES (feature solves pain point), COMPETES_WITH, SIMILAR_TO (semantic similarity between sections), TARGETS_AUDIENCE, BELONGS_TO_LAYER, and more.</p>
+        <div class="pipeline-tags">
+          <span class="pipeline-tag">MENTIONS</span><span class="pipeline-tag">HAS_FEATURE</span><span class="pipeline-tag">ADDRESSES</span><span class="pipeline-tag">COMPETES_WITH</span><span class="pipeline-tag">TARGETS_AUDIENCE</span><span class="pipeline-tag">SIMILAR_TO</span><span class="pipeline-tag">BELONGS_TO_LAYER</span><span class="pipeline-tag">39,176 Total</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- API -->
+<div id="api">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">04 &mdash; API Layer</span>
+    <h2>15 REST Endpoints</h2>
+    <p>A Flask API deployed on Cloud Run exposes the full knowledge graph. Every protected endpoint requires <code>X-API-Key</code> authentication.</p>
+  </div>
+  <div class="api-grid anim-target" id="apiGrid"></div>
+</div>
+</div>
+
+<!-- GEMINI -->
+<div class="section-alt" id="gemini">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">05 &mdash; AI Engine</span>
+    <h2>Gemini AI Integration</h2>
+    <p>Gemini 2.5 Flash with function calling turns the knowledge graph into a conversational intelligence system.</p>
+  </div>
+  <div class="gemini-flow anim-target">
+    <div class="gemini-panel">
+      <h3>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF9922" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        User Query
+      </h3>
+      <div style="background:var(--neutral-50);border-radius:var(--radius-md);padding:1rem;font-size:0.875rem;color:var(--neutral-600);font-style:italic;">"How does Domo compete with Tableau in the healthcare industry?"</div>
+    </div>
+    <div class="gemini-flow-arrow">
+      <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="36" y2="12"/><polyline points="30 6 36 12 30 18"/></svg>
+    </div>
+    <div class="gemini-panel">
+      <h3>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A9FCC" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Gemini 2.5 Flash
+      </h3>
+      <p style="font-size:0.875rem;margin-bottom:0.75rem;">Temperature: 0.3 &mdash; Accurate, consistent output</p>
+      <div style="background:var(--neutral-50);border-radius:var(--radius-md);padding:0.75rem;font-size:0.75rem;font-family:'SF Mono',Monaco,monospace;color:var(--neutral-600);">
+        <span style="color:#FF9922;">Tool Call:</span> get_competitor_details("Tableau")<br>
+        <span style="color:#FF9922;">Tool Call:</span> get_product_sections("Domo BI")<br>
+        <span style="color:#5A9FCC;">&rarr; Synthesize</span> final answer with citations
+      </div>
+    </div>
+  </div>
+  <h3 style="text-align:center;margin-bottom:1rem;" class="anim-target">21 Function-Calling Tools</h3>
+  <div class="tool-grid anim-target" id="toolGrid"></div>
+  <div class="anim-target">
+    <h3 style="text-align:center;margin-top:2rem;margin-bottom:1rem;">4-Step Search Strategy</h3>
+    <div class="strategy-steps">
+      <div class="strategy-step"><div class="strategy-step-num">1</div><h4>Identify Query Type</h4><p>Product, competitor, integration, industry, or audience?</p></div>
+      <div class="strategy-step"><div class="strategy-step-num">2</div><h4>Multi-Step Search</h4><p>Start with keywords, broaden to full documents if needed</p></div>
+      <div class="strategy-step"><div class="strategy-step-num">3</div><h4>Availability Check</h4><p>Skip pricing, revenue, employee data &mdash; not in graph</p></div>
+      <div class="strategy-step"><div class="strategy-step-num">4</div><h4>Synthesize Response</h4><p>Cite sources, use bullet points, be comprehensive</p></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- MCP -->
+<div id="mcp">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">06 &mdash; MCP Server</span>
+    <h2>Model Context Protocol</h2>
+    <p>The knowledge graph is exposed as 12 MCP tools, giving Claude agents direct access to Domo's messaging intelligence.</p>
+  </div>
+  <div class="mcp-layout anim-target">
+    <div class="mcp-card">
+      <h3>12 Available Tools</h3>
+      <ul class="mcp-tool-list">
+        <li><span class="mcp-tool-name">query</span> &mdash; AI natural language query</li>
+        <li><span class="mcp-tool-name">search_documents</span> &mdash; Full-text search</li>
+        <li><span class="mcp-tool-name">get_documents</span> &mdash; List all documents</li>
+        <li><span class="mcp-tool-name">get_document</span> &mdash; Document by ID</li>
+        <li><span class="mcp-tool-name">get_products</span> &mdash; List all products</li>
+        <li><span class="mcp-tool-name">get_product_profile</span> &mdash; Full product profile</li>
+        <li><span class="mcp-tool-name">get_product_sections</span> &mdash; Product mentions</li>
+        <li><span class="mcp-tool-name">get_competitors</span> &mdash; All competitors</li>
+        <li><span class="mcp-tool-name">get_competitor_details</span> &mdash; Competitor intel</li>
+        <li><span class="mcp-tool-name">get_industries</span> &mdash; Industries served</li>
+        <li><span class="mcp-tool-name">get_compliance</span> &mdash; Compliance frameworks</li>
+        <li><span class="mcp-tool-name">get_stats</span> &mdash; Graph statistics</li>
+      </ul>
+    </div>
+    <div class="mcp-card">
+      <h3>Transport and Auth</h3>
+      <div class="mcp-detail">
+        <div class="mcp-detail-icon icon-docs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+        <div><h4>STDIO Transport</h4><p>Local Claude Code integration &mdash; direct pipe</p></div>
+      </div>
+      <div class="mcp-detail">
+        <div class="mcp-detail-icon icon-gemini"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <div><h4>SSE Transport</h4><p>Remote clients (AirOps, custom apps) via Server-Sent Events</p></div>
+      </div>
+      <div class="mcp-detail">
+        <div class="mcp-detail-icon icon-neo4j"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <div><h4>API Key + Bearer Token</h4><p>X-API-Key for REST, Bearer token middleware for SSE</p></div>
+      </div>
+      <div class="mcp-detail">
+        <div class="mcp-detail-icon icon-mcp"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+        <div><h4>Powers Claude Code + AirOps</h4><p>Used by Gemini agents and Claude workflows</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- INFRASTRUCTURE -->
+<div class="section-alt" id="infra">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">07 &mdash; Infrastructure</span>
+    <h2>Cloud-Native Stack</h2>
+    <p>Production-grade infrastructure on Google Cloud Platform with multi-tier caching and automated monitoring.</p>
+  </div>
+  <div class="infra-grid anim-target">
+    <div class="infra-card">
+      <div class="infra-card-icon icon-api"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></div>
+      <h3>Google Cloud Run</h3><p>Serverless container hosting with auto-scaling</p>
+      <ul class="infra-specs"><li>Auto-scaling 0&ndash;N instances</li><li>Gunicorn: 2 workers, 4 threads</li><li>60s request timeout</li><li>Multi-stage Docker build (Python 3.11-slim)</li><li>Project: domo-marketing, us-central1</li></ul>
+    </div>
+    <div class="infra-card">
+      <div class="infra-card-icon icon-neo4j"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><line x1="14.5" y1="10" x2="17.5" y2="6.5"/><line x1="9.5" y1="14" x2="6.5" y2="17.5"/></svg></div>
+      <h3>Neo4j Aura</h3><p>Managed cloud graph database</p>
+      <ul class="infra-specs"><li>Neo4j Aura (cloud-hosted)</li><li>50 connection pool max</li><li>Keep-alive enabled</li><li>Full-text + composite indexes</li><li>neo4j+s:// encrypted transport</li></ul>
+    </div>
+    <div class="infra-card">
+      <div class="infra-card-icon icon-gemini"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <h3>Monitoring and Health</h3><p>Automated validation and alerting</p>
+      <ul class="infra-specs"><li>Daily validation checks</li><li>Orphaned node detection</li><li>Stale data identification</li><li>Relationship confidence scoring</li><li>SendGrid email alerts</li></ul>
+    </div>
+    <div class="cache-diagram">
+      <div class="cache-tier"><div class="stat">L1</div><h4>In-Memory Cache</h4><p>200 entries, LRU eviction, per-instance</p></div>
+      <div class="cache-diagram-arrow"><svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="36" y2="12"/><polyline points="30 6 36 12 30 18"/></svg></div>
+      <div class="cache-tier"><div class="stat">L2</div><h4>Redis (Shared)</h4><p>Survives cold starts, cross-instance</p></div>
+      <div class="cache-diagram-arrow"><svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="12" x2="36" y2="12"/><polyline points="30 6 36 12 30 18"/></svg></div>
+      <div class="cache-tier"><div class="stat" style="color:var(--accent-orange);">Neo4j</div><h4>Graph Database</h4><p>Source of truth, 39K relationships</p></div>
+    </div>
+    <div class="ttl-grid">
+      <div class="ttl-card"><div class="ttl-card-label">Node Lookups</div><div class="ttl-card-value">1 hr</div></div>
+      <div class="ttl-card"><div class="ttl-card-label">List Operations</div><div class="ttl-card-value">30 min</div></div>
+      <div class="ttl-card"><div class="ttl-card-label">Semantic Search</div><div class="ttl-card-value">5 min</div></div>
+      <div class="ttl-card"><div class="ttl-card-label">Graph Algorithms</div><div class="ttl-card-value">2 hr</div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- STATS -->
+<div class="stats-section" id="stats">
+  <div class="section-header anim-target" style="margin-bottom:2.5rem;">
+    <span class="section-number" style="background:rgba(153,204,238,0.12);">By The Numbers</span>
+    <h2 style="color:white;">The Messaging Brain at Scale</h2>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card anim-target"><div class="stat-value" data-value="13">0</div><div class="stat-label">Documents</div></div>
+    <div class="stat-card anim-target"><div class="stat-value" data-value="197">0</div><div class="stat-label">Sections</div></div>
+    <div class="stat-card anim-target"><div class="stat-value" data-value="39176">0</div><div class="stat-label">Relationships</div></div>
+    <div class="stat-card anim-target"><div class="stat-value" data-value="21">0</div><div class="stat-label">AI Tools</div></div>
+    <div class="stat-card anim-target"><div class="stat-value" data-value="15">0</div><div class="stat-label">API Endpoints</div></div>
+    <div class="stat-card anim-target"><div class="stat-value" data-value="12">0</div><div class="stat-label">MCP Tools</div></div>
+    <div class="stat-card anim-target"><div class="stat-value" data-value="8">0</div><div class="stat-label">Competitors Tracked</div></div>
+    <div class="stat-card anim-target"><div class="stat-value" data-value="10">0</div><div class="stat-label">Industries Covered</div></div>
+  </div>
+</div>
+
+<footer class="footer">
+  <p>Built by Domo Marketing and Growth &mdash; Powered by Neo4j, Gemini AI, and Google Cloud Run</p>
+</footer>
+
+<script>
+(function() {
+  "use strict";
+
+  // === NAV ===
+  var nav = document.getElementById("nav");
+  var navToggle = document.getElementById("navToggle");
+  var navLinks = document.getElementById("navLinks");
+
+  window.addEventListener("scroll", function() {
+    nav.classList.toggle("scrolled", window.scrollY > 20);
+  }, { passive: true });
+
+  navToggle.addEventListener("click", function() {
+    navLinks.classList.toggle("open");
+  });
+
+  var linkEls = navLinks.querySelectorAll("a");
+  linkEls.forEach(function(a) {
+    a.addEventListener("click", function() { navLinks.classList.remove("open"); });
+  });
+
+  // Active nav on scroll
+  var allSections = document.querySelectorAll("[id]");
+  window.addEventListener("scroll", function() {
+    var current = "";
+    allSections.forEach(function(s) {
+      if (window.scrollY >= s.offsetTop - 120) current = s.id;
+    });
+    linkEls.forEach(function(a) {
+      a.classList.toggle("active", a.getAttribute("href") === "#" + current);
+    });
+  }, { passive: true });
+
+  // === SCROLL ANIMATIONS ===
+  var animObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry, i) {
+      if (entry.isIntersecting) {
+        setTimeout(function() { entry.target.classList.add("visible"); }, i * 60);
+        animObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  document.querySelectorAll(".anim-target").forEach(function(el) { animObserver.observe(el); });
+
+  // === ANIMATED COUNTERS ===
+  function animateValue(el, start, end, duration) {
+    var startTime = performance.now();
+    function update(t) {
+      var elapsed = t - startTime;
+      var progress = Math.min(elapsed / duration, 1);
+      var ease = 1 - Math.pow(2, -10 * progress);
+      el.textContent = Math.floor(start + (end - start) * ease).toLocaleString();
+      if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  }
+  var counterObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var el = entry.target;
+        animateValue(el, 0, parseInt(el.dataset.value), 1800);
+        counterObserver.unobserve(el);
+      }
+    });
+  }, { threshold: 0.3 });
+  document.querySelectorAll("[data-value]").forEach(function(el) { counterObserver.observe(el); });
+
+  // === HERO CANVAS ===
+  (function() {
+    var canvas = document.getElementById("heroCanvas");
+    var ctx = canvas.getContext("2d");
+    var nodes = [];
+    var w, h;
+    function resize() { w = canvas.width = canvas.offsetWidth; h = canvas.height = canvas.offsetHeight; }
+    resize();
+    window.addEventListener("resize", resize);
+    var nodeCount = Math.min(80, Math.floor(window.innerWidth / 15));
+    for (var i = 0; i < nodeCount; i++) {
+      nodes.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4, r: Math.random() * 2.5 + 1, opacity: Math.random() * 0.4 + 0.1 });
+    }
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      for (var i = 0; i < nodes.length; i++) {
+        for (var j = i + 1; j < nodes.length; j++) {
+          var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 150) {
+            ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.strokeStyle = "rgba(255,255,255," + (0.08 * (1 - dist / 150)) + ")";
+            ctx.lineWidth = 0.5; ctx.stroke();
+          }
+        }
+      }
+      nodes.forEach(function(n) {
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255," + n.opacity + ")"; ctx.fill();
+        n.x += n.vx; n.y += n.vy;
+        if (n.x < 0 || n.x > w) n.vx *= -1;
+        if (n.y < 0 || n.y > h) n.vy *= -1;
+      });
+      requestAnimationFrame(draw);
+    }
+    draw();
+  })();
+
+  // === INTERACTIVE GRAPH ===
+  (function() {
+    var canvas = document.getElementById("graphCanvas");
+    var ctx = canvas.getContext("2d");
+    var infoPanel = document.getElementById("graphInfo");
+    var legendEl = document.getElementById("graphLegend");
+    var W, H;
+
+    var nodeTypes = [
+      { id: "document", label: "Document", count: 13, color: "#99CCEE", desc: "Messaging framework documents across 11 layers. Each contains title, authority level, layer assignment, and rich markdown content.", tags: ["13 docs", "11 layers"] },
+      { id: "section", label: "Section", count: 197, color: "#7BB8E0", desc: "Extracted sections from documents with preserved ordering. Each has a title, content body, and section_order for sequencing.", tags: ["197 sections", "H1-H6"] },
+      { id: "product", label: "Product", count: 7, color: "#FF9922", desc: "Domo products: Data Integration, Domo BI, Agent Catalyst, Workflows, Embed, Everywhere, Governance.", tags: ["7 products"] },
+      { id: "feature", label: "Feature", count: 30, color: "#E8891F", desc: "Product capabilities extracted via regex: connectors, automation, real-time, enterprise-grade, scalable, secure.", tags: ["capabilities"] },
+      { id: "competitor", label: "Competitor", count: 8, color: "#C179BD", desc: "Tracked competitors: Tableau, Power BI, Looker, Qlik, Snowflake, Databricks, ThoughtSpot, Alteryx.", tags: ["8 tracked"] },
+      { id: "integration", label: "Integration", count: 50, color: "#ADD4C1", desc: "50+ data connectors: Salesforce, BigQuery, Snowflake, SAP, Oracle, and hundreds more in production.", tags: ["50+ connectors"] },
+      { id: "industry", label: "Industry", count: 10, color: "#776CB0", desc: "10 vertical markets: Healthcare, Retail, Finance, Manufacturing, Technology, Education, Government, Media, Energy, Telecom.", tags: ["10 verticals"] },
+      { id: "audience", label: "Audience", count: 6, color: "#ECA4DD", desc: "User personas categorized as Technical or Non-Technical. Linked to pain points and product features.", tags: ["personas"] },
+      { id: "painpoint", label: "PainPoint", count: 20, color: "#E07070", desc: "Business challenges by severity and audience. Connected to features that address them via ADDRESSES relationships.", tags: ["by severity"] },
+      { id: "compliance", label: "Compliance", count: 8, color: "#8BC4A0", desc: "Certifications and standards: SOC 2 Type II, HIPAA, GDPR, FedRAMP, ISO 27001, and more.", tags: ["certifications"] },
+      { id: "layer", label: "Layer", count: 11, color: "#B7C1CB", desc: "Messaging framework hierarchy layers (0-10). Documents belong to layers defining their authority and scope.", tags: ["11 layers"] },
+      { id: "concept", label: "Concept", count: 24, color: "#DABB6E", desc: "24 strategic messaging themes extracted from documents. High-level ideas that unify messaging across products.", tags: ["24 themes"] }
+    ];
+
+    var edges = [
+      ["document","section"], ["section","product"], ["section","competitor"],
+      ["product","feature"], ["feature","painpoint"], ["product","audience"],
+      ["product","integration"], ["product","competitor"], ["product","compliance"],
+      ["document","industry"], ["document","concept"], ["document","layer"],
+      ["painpoint","industry"], ["feature","audience"], ["audience","painpoint"]
+    ];
+
+    var graphNodes = [];
+    var hoveredNode = null;
+
+    function resize() { W = canvas.width = canvas.offsetWidth; H = canvas.height = canvas.offsetHeight; layoutNodes(); }
+    function layoutNodes() {
+      var cx = W / 2, cy = H / 2;
+      var radius = Math.min(W, H) * 0.35;
+      graphNodes = nodeTypes.map(function(nt, i) {
+        var angle = (i / nodeTypes.length) * Math.PI * 2 - Math.PI / 2;
+        var r = Math.min(18, Math.max(8, Math.sqrt(nt.count) * 3));
+        return { id: nt.id, label: nt.label, count: nt.count, color: nt.color, desc: nt.desc, tags: nt.tags,
+          x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius, r: r,
+          baseX: cx + Math.cos(angle) * radius, baseY: cy + Math.sin(angle) * radius, angle: angle };
+      });
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    // Build legend with safe DOM methods
+    nodeTypes.forEach(function(nt) {
+      var item = document.createElement("div");
+      item.className = "graph-legend-item";
+      var dot = document.createElement("span");
+      dot.className = "graph-legend-dot";
+      dot.style.background = nt.color;
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(nt.label + " (" + nt.count + ")"));
+      item.addEventListener("mouseenter", function() {
+        hoveredNode = graphNodes.find(function(n) { return n.id === nt.id; });
+        showInfo(hoveredNode);
+      });
+      item.addEventListener("mouseleave", function() { hoveredNode = null; infoPanel.classList.remove("active"); });
+      legendEl.appendChild(item);
+    });
+
+    function showInfo(node) {
+      document.getElementById("graphInfoTitle").textContent = node.label + " (" + node.count + ")";
+      document.getElementById("graphInfoDesc").textContent = node.desc;
+      var tagsEl = document.getElementById("graphInfoTags");
+      while (tagsEl.firstChild) tagsEl.removeChild(tagsEl.firstChild);
+      node.tags.forEach(function(t) {
+        var tag = document.createElement("span");
+        tag.className = "graph-info-tag";
+        tag.style.background = node.color + "22";
+        tag.style.color = node.color;
+        tag.textContent = t;
+        tagsEl.appendChild(tag);
+      });
+      infoPanel.classList.add("active");
+    }
+
+    canvas.addEventListener("mousemove", function(e) {
+      var rect = canvas.getBoundingClientRect();
+      var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      hoveredNode = null;
+      for (var i = 0; i < graphNodes.length; i++) {
+        var dx = mx - graphNodes[i].x, dy = my - graphNodes[i].y;
+        if (Math.sqrt(dx*dx + dy*dy) < graphNodes[i].r + 6) { hoveredNode = graphNodes[i]; break; }
+      }
+      canvas.style.cursor = hoveredNode ? "pointer" : "default";
+      if (hoveredNode) showInfo(hoveredNode); else infoPanel.classList.remove("active");
+    });
+
+    var time = 0;
+    function draw() {
+      time += 0.005;
+      ctx.clearRect(0, 0, W, H);
+      graphNodes.forEach(function(n) {
+        n.x = n.baseX + Math.sin(time + n.angle * 2) * 4;
+        n.y = n.baseY + Math.cos(time + n.angle * 3) * 4;
+      });
+      edges.forEach(function(edge) {
+        var from = graphNodes.find(function(n) { return n.id === edge[0]; });
+        var to = graphNodes.find(function(n) { return n.id === edge[1]; });
+        if (!from || !to) return;
+        var hl = hoveredNode && (hoveredNode.id === edge[0] || hoveredNode.id === edge[1]);
+        ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y);
+        ctx.strokeStyle = hl ? "rgba(153,204,238,0.5)" : "rgba(255,255,255,0.06)";
+        ctx.lineWidth = hl ? 1.5 : 0.5; ctx.stroke();
+      });
+      graphNodes.forEach(function(n) {
+        var isHovered = hoveredNode && hoveredNode.id === n.id;
+        var isConnected = hoveredNode && edges.some(function(e) {
+          return (e[0] === hoveredNode.id && e[1] === n.id) || (e[1] === hoveredNode.id && e[0] === n.id);
+        });
+        var alpha = hoveredNode ? (isHovered ? 1 : isConnected ? 0.8 : 0.2) : 0.7;
+        if (isHovered) {
+          ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 8, 0, Math.PI * 2);
+          ctx.fillStyle = n.color + "30"; ctx.fill();
+        }
+        ctx.beginPath(); ctx.arc(n.x, n.y, isHovered ? n.r + 2 : n.r, 0, Math.PI * 2);
+        ctx.fillStyle = n.color; ctx.globalAlpha = alpha; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.font = (isHovered ? "700" : "600") + " " + (isHovered ? 11 : 10) + "px 'Open Sans', sans-serif";
+        ctx.fillStyle = "rgba(255,255,255," + (alpha * 0.9) + ")";
+        ctx.textAlign = "center"; ctx.fillText(n.label, n.x, n.y + n.r + 16);
+      });
+      ctx.font = "300 14px 'Open Sans', sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.textAlign = "center";
+      ctx.fillText("39,176 relationships", W/2, H/2 + 5);
+      requestAnimationFrame(draw);
+    }
+    draw();
+  })();
+
+  // === API ENDPOINTS (safe DOM) ===
+  (function() {
+    var endpoints = [
+      { cat: "AI-Powered", items: [
+        { method: "POST", name: "AI Query", path: "/api/query", desc: "Natural language query powered by Gemini 2.5 Flash with 21 function-calling tools. Identifies query type, searches the graph, and synthesizes cited answers." },
+        { method: "POST", name: "Fact-Check", path: "/api/v3/validate/fact-check", desc: "Validates Domo claims in marketing content against the knowledge graph. Returns corrected content with a detailed corrections log." }
+      ]},
+      { cat: "Documents", items: [
+        { method: "GET", name: "List Documents", path: "/api/documents", desc: "Returns all 13 messaging framework documents with metadata: title, authority level, layer, and document type." },
+        { method: "GET", name: "Search Documents", path: "/api/documents/search?q=...", desc: "Full-text keyword search across document titles and section content using Neo4j full-text indexes." },
+        { method: "GET", name: "Document Sections", path: "/api/documents/{id}/sections", desc: "Returns all sections belonging to a document, ordered by section_order." }
+      ]},
+      { cat: "Products", items: [
+        { method: "GET", name: "List Products", path: "/api/products", desc: "Returns all 7 Domo products with name and description." },
+        { method: "GET", name: "Product Profile", path: "/api/products/{name}/profile", desc: "Comprehensive product profile: features, target audiences, pain points addressed, compliance, and value propositions." },
+        { method: "GET", name: "Product Sections", path: "/api/products/{name}/sections", desc: "Every document section that mentions this product for understanding messaging coverage." }
+      ]},
+      { cat: "Competitive Intel", items: [
+        { method: "GET", name: "List Competitors", path: "/api/competitors", desc: "All 8 tracked competitors: Tableau, Power BI, Looker, Qlik, Snowflake, Databricks, ThoughtSpot, Alteryx." },
+        { method: "GET", name: "Competitor Details", path: "/api/competitors/{name}", desc: "Detailed competitive intelligence: description, category, and which Domo products compete." }
+      ]},
+      { cat: "Advanced", items: [
+        { method: "POST", name: "Semantic Search", path: "/api/v3/search/semantic", desc: "Hybrid search combining vector similarity with graph traversal for semantically-aware results." },
+        { method: "POST", name: "Batch Queries", path: "/api/v3/batch", desc: "Execute multiple queries in a single request for efficient bulk operations." },
+        { method: "GET", name: "Graph Stats", path: "/api/stats", desc: "Node counts, relationship counts, and overall graph health metrics." }
+      ]}
+    ];
+
+    var grid = document.getElementById("apiGrid");
+    endpoints.forEach(function(cat) {
+      var catEl = document.createElement("div");
+      catEl.className = "api-category";
+      var catIcon = document.createElement("div");
+      catIcon.className = "api-category-icon";
+      catIcon.style.background = "rgba(153,204,238,0.12)";
+      catIcon.style.color = "var(--domo-blue-deeper)";
+      var iconSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      iconSvg.setAttribute("width", "18"); iconSvg.setAttribute("height", "18");
+      iconSvg.setAttribute("viewBox", "0 0 24 24"); iconSvg.setAttribute("fill", "none");
+      iconSvg.setAttribute("stroke", "currentColor"); iconSvg.setAttribute("stroke-width", "2");
+      iconSvg.setAttribute("stroke-linecap", "round");
+      var polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      polygon.setAttribute("points", "13 2 3 14 12 14 11 22 21 10 12 10 13 2");
+      iconSvg.appendChild(polygon);
+      catIcon.appendChild(iconSvg);
+      catEl.appendChild(catIcon);
+      var catTitle = document.createElement("h3");
+      catTitle.textContent = cat.cat;
+      catEl.appendChild(catTitle);
+      grid.appendChild(catEl);
+
+      cat.items.forEach(function(ep) {
+        var card = document.createElement("div");
+        card.className = "api-card";
+
+        var header = document.createElement("div");
+        header.className = "api-card-header";
+        var headerLeft = document.createElement("div");
+        headerLeft.className = "api-card-header-left";
+        var method = document.createElement("span");
+        method.className = "api-method " + ep.method.toLowerCase();
+        method.textContent = ep.method;
+        headerLeft.appendChild(method);
+        var title = document.createElement("h4");
+        title.textContent = ep.name;
+        headerLeft.appendChild(title);
+        header.appendChild(headerLeft);
+
+        var chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        chevron.setAttribute("class", "api-card-chevron");
+        chevron.setAttribute("width", "16"); chevron.setAttribute("height", "16");
+        chevron.setAttribute("viewBox", "0 0 24 24"); chevron.setAttribute("fill", "none");
+        chevron.setAttribute("stroke", "currentColor"); chevron.setAttribute("stroke-width", "2");
+        chevron.setAttribute("stroke-linecap", "round");
+        var polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        polyline.setAttribute("points", "6 9 12 15 18 9");
+        chevron.appendChild(polyline);
+        header.appendChild(chevron);
+        card.appendChild(header);
+
+        var body = document.createElement("div");
+        body.className = "api-card-body";
+        var bodyInner = document.createElement("div");
+        bodyInner.className = "api-card-body-inner";
+        var endpoint = document.createElement("div");
+        endpoint.className = "api-endpoint";
+        endpoint.textContent = ep.path;
+        bodyInner.appendChild(endpoint);
+        var desc = document.createElement("p");
+        desc.textContent = ep.desc;
+        bodyInner.appendChild(desc);
+        body.appendChild(bodyInner);
+        card.appendChild(body);
+
+        header.addEventListener("click", function() { card.classList.toggle("open"); });
+        grid.appendChild(card);
+      });
+    });
+  })();
+
+  // === TOOL GRID (safe DOM) ===
+  (function() {
+    var tools = [
+      { name: "Document Search", count: 3, items: ["search_documents", "get_document_content", "get_document_sections"], color: "#99CCEE" },
+      { name: "Product Intel", count: 3, items: ["get_all_products", "get_product_sections", "get_product_compliance"], color: "#FF9922" },
+      { name: "Competitive Intel", count: 2, items: ["get_all_competitors", "get_competitor_details"], color: "#C179BD" },
+      { name: "Integration & Industry", count: 4, items: ["get_all_integrations", "check_integration", "get_industries", "get_compliance_requirements"], color: "#ADD4C1" },
+      { name: "Audience & Segments", count: 2, items: ["get_audience_pain_points", "get_features_for_audience"], color: "#776CB0" },
+      { name: "Canonical Framework", count: 5, items: ["get_rules_of_reasoning", "get_governance_documents", "get_canonical_documents", "get_layer_hierarchy", "get_partner_messaging"], color: "#B7C1CB" }
+    ];
+
+    var grid = document.getElementById("toolGrid");
+    tools.forEach(function(cat) {
+      var el = document.createElement("div");
+      el.className = "tool-category";
+      var h = document.createElement("h4");
+      h.textContent = cat.name + " ";
+      var badge = document.createElement("span");
+      badge.className = "tool-category-count";
+      badge.style.background = cat.color;
+      badge.textContent = cat.count;
+      h.appendChild(badge);
+      el.appendChild(h);
+      var ul = document.createElement("ul");
+      cat.items.forEach(function(t) {
+        var li = document.createElement("li");
+        li.textContent = t + "()";
+        ul.appendChild(li);
+      });
+      el.appendChild(ul);
+      grid.appendChild(el);
+    });
+  })();
+
+})();
+</script>
+</body>
+</html>
