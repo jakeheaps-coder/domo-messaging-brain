@@ -815,6 +815,57 @@ code { font-size: 0.8125rem; background: var(--neutral-50); padding: 0.1rem 0.4r
 </div>
 </div>
 
+<!-- HOW TO QUERY -->
+<div id="query">
+<div class="section">
+  <div class="section-header anim-target">
+    <span class="section-number">08 &mdash; How to Query</span>
+    <h2>Three Ways to Ask the Brain</h2>
+    <p>The knowledge graph can be queried through three different interfaces depending on your use case.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;" class="anim-target">
+    <div style="background:white;border:1px solid var(--neutral-100);border-radius:12px;padding:1.75rem;transition:all .3s cubic-bezier(.83,0,.17,1);" onmouseover="this.style.boxShadow='0 8px 20px rgba(63,69,77,.08)';this.style.transform='translateY(-2px)';" onmouseout="this.style.boxShadow='none';this.style.transform='none';">
+      <div style="width:48px;height:48px;border-radius:8px;background:rgba(153,204,238,.12);color:var(--domo-blue-deeper);display:flex;align-items:center;justify-content:center;margin-bottom:1rem;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <h3 style="font-size:1rem;margin-bottom:.5rem;">Natural Language API</h3>
+      <p style="font-size:.875rem;margin-bottom:1rem;">Ask questions in plain English. Gemini selects the right tools, queries the graph, and returns cited answers.</p>
+      <div style="background:var(--neutral-50);border-radius:8px;padding:.75rem;font-family:'SF Mono',Monaco,monospace;font-size:.7rem;color:var(--neutral-600);line-height:1.5;">
+        POST /api/query<br>
+        { "question": "How does Domo<br>
+        &nbsp;&nbsp;compete with Tableau in<br>
+        &nbsp;&nbsp;healthcare?" }
+      </div>
+    </div>
+    <div style="background:white;border:1px solid var(--neutral-100);border-radius:12px;padding:1.75rem;transition:all .3s cubic-bezier(.83,0,.17,1);" onmouseover="this.style.boxShadow='0 8px 20px rgba(63,69,77,.08)';this.style.transform='translateY(-2px)';" onmouseout="this.style.boxShadow='none';this.style.transform='none';">
+      <div style="width:48px;height:48px;border-radius:8px;background:rgba(193,121,189,.12);color:var(--accent-pink);display:flex;align-items:center;justify-content:center;margin-bottom:1rem;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <h3 style="font-size:1rem;margin-bottom:.5rem;">MCP via Claude Code</h3>
+      <p style="font-size:.875rem;margin-bottom:1rem;">Claude agents can call any of the 12 MCP tools directly. The KG is configured as an MCP server in your project.</p>
+      <div style="background:var(--neutral-50);border-radius:8px;padding:.75rem;font-family:'SF Mono',Monaco,monospace;font-size:.7rem;color:var(--neutral-600);line-height:1.5;">
+        Tool: query<br>
+        { "question": "What are<br>
+        &nbsp;&nbsp;Domo's compliance<br>
+        &nbsp;&nbsp;certifications?" }
+      </div>
+    </div>
+    <div style="background:white;border:1px solid var(--neutral-100);border-radius:12px;padding:1.75rem;transition:all .3s cubic-bezier(.83,0,.17,1);" onmouseover="this.style.boxShadow='0 8px 20px rgba(63,69,77,.08)';this.style.transform='translateY(-2px)';" onmouseout="this.style.boxShadow='none';this.style.transform='none';">
+      <div style="width:48px;height:48px;border-radius:8px;background:rgba(255,153,34,.1);color:var(--accent-orange);display:flex;align-items:center;justify-content:center;margin-bottom:1rem;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <h3 style="font-size:1rem;margin-bottom:.5rem;">REST API Direct</h3>
+      <p style="font-size:.875rem;margin-bottom:1rem;">Call any of the 15 endpoints directly for structured data. Great for integrations and programmatic access.</p>
+      <div style="background:var(--neutral-50);border-radius:8px;padding:.75rem;font-family:'SF Mono',Monaco,monospace;font-size:.7rem;color:var(--neutral-600);line-height:1.5;">
+        GET /api/products/Domo%20BI/profile<br>
+        Headers:<br>
+        &nbsp;&nbsp;X-API-Key: &lt;key&gt;
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
 <!-- STATS -->
 <div class="stats-section" id="stats">
   <div class="section-header anim-target" style="margin-bottom:2.5rem;">
@@ -833,8 +884,58 @@ code { font-size: 0.8125rem; background: var(--neutral-50); padding: 0.1rem 0.4r
   </div>
 </div>
 
+<!-- BUILT WITH -->
+<div style="background:var(--neutral-900);padding:3rem 1.5rem 0;">
+  <div style="max-width:1200px;margin:0 auto;">
+    <div class="anim-target" style="text-align:center;margin-bottom:2rem;">
+      <h3 style="color:white;margin-bottom:.5rem;">Built With</h3>
+      <p style="color:rgba(255,255,255,.4);font-size:.875rem;">The technologies powering the messaging brain</p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:.75rem;padding-bottom:2.5rem;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="padding:.4rem .9rem;background:rgba(153,204,238,.1);border:1px solid rgba(153,204,238,.15);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--domo-blue);">Python 3.11</span>
+      <span style="padding:.4rem .9rem;background:rgba(173,212,193,.1);border:1px solid rgba(173,212,193,.15);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--accent-mint);">Neo4j Aura</span>
+      <span style="padding:.4rem .9rem;background:rgba(255,153,34,.08);border:1px solid rgba(255,153,34,.12);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--accent-orange);">Gemini 2.5 Flash</span>
+      <span style="padding:.4rem .9rem;background:rgba(119,108,176,.1);border:1px solid rgba(119,108,176,.15);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--accent-purple);">Flask + Gunicorn</span>
+      <span style="padding:.4rem .9rem;background:rgba(153,204,238,.1);border:1px solid rgba(153,204,238,.15);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--domo-blue);">Google Cloud Run</span>
+      <span style="padding:.4rem .9rem;background:rgba(193,121,189,.1);border:1px solid rgba(193,121,189,.15);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--accent-pink);">FastMCP</span>
+      <span style="padding:.4rem .9rem;background:rgba(173,212,193,.1);border:1px solid rgba(173,212,193,.15);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--accent-mint);">Redis</span>
+      <span style="padding:.4rem .9rem;background:rgba(255,153,34,.08);border:1px solid rgba(255,153,34,.12);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--accent-orange);">Pydantic</span>
+      <span style="padding:.4rem .9rem;background:rgba(119,108,176,.1);border:1px solid rgba(119,108,176,.15);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--accent-purple);">GraphQL (Ariadne)</span>
+    </div>
+  </div>
+</div>
+
+<!-- VERSION HISTORY -->
+<div style="background:var(--neutral-900);padding:2.5rem 1.5rem;">
+  <div style="max-width:800px;margin:0 auto;">
+    <h3 style="color:white;text-align:center;margin-bottom:1.5rem;font-size:1rem;">Version History</h3>
+    <div style="border-left:2px solid rgba(153,204,238,.2);padding-left:1.5rem;margin-left:.5rem;">
+      <div style="margin-bottom:1.5rem;position:relative;">
+        <div style="position:absolute;left:-1.85rem;top:.25rem;width:10px;height:10px;border-radius:50%;background:var(--domo-blue);"></div>
+        <div style="font-size:.7rem;font-weight:700;color:var(--domo-blue);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.25rem;">v1.0 &mdash; February 2026</div>
+        <div style="font-size:.875rem;font-weight:600;color:white;margin-bottom:.25rem;">Initial Release</div>
+        <ul style="list-style:none;font-size:.8rem;color:rgba(255,255,255,.4);line-height:1.8;">
+          <li>Interactive knowledge graph visualization with 12 node types</li>
+          <li>Full architecture flow diagram (Docs &rarr; Parser &rarr; Neo4j &rarr; API &rarr; Gemini &rarr; Answers)</li>
+          <li>5-step ingestion pipeline walkthrough</li>
+          <li>15 API endpoint documentation with expandable cards</li>
+          <li>21 Gemini function-calling tools organized by category</li>
+          <li>4-step search strategy visualization</li>
+          <li>MCP server tool catalog (12 tools, STDIO + SSE)</li>
+          <li>Infrastructure deep dive: Cloud Run, Neo4j Aura, two-tier caching</li>
+          <li>Animated stat counters (39,176 relationships)</li>
+          <li>Scroll-triggered animations and hover interactions</li>
+          <li>Domo design system: Open Sans, #99CCEE, #FF9922 CTAs</li>
+          <li>Responsive layout with mobile navigation</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
 <footer class="footer">
   <p>Built by Domo Marketing and Growth &mdash; Powered by Neo4j, Gemini AI, and Google Cloud Run</p>
+  <p style="margin-top:.5rem;font-size:.7rem;color:rgba(255,255,255,.2);">Last updated February 2026 &mdash; v1.0</p>
 </footer>
 
 <script>
