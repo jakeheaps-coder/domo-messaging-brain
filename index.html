@@ -875,20 +875,7 @@ code { font-size: 0.8125rem; background: var(--neutral-50); padding: 0.1rem 0.4r
     <p>Ask the messaging knowledge graph anything about Domo's products, competitors, industries, or messaging strategy.</p>
   </div>
   <div class="anim-target" id="chatContainer">
-    <!-- API key setup -->
-    <div id="chatKeySetup" style="max-width:560px;margin:0 auto;text-align:center;">
-      <div style="background:white;border:1px solid var(--neutral-100);border-radius:12px;padding:2rem;">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5A9FCC" stroke-width="2" stroke-linecap="round" style="margin-bottom:1rem;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <h3 style="font-size:1rem;margin-bottom:.5rem;">Enter API Key to Start</h3>
-        <p style="font-size:.875rem;margin-bottom:1.25rem;">The KG API requires authentication. Enter your key to start chatting.</p>
-        <div style="display:flex;gap:.5rem;max-width:400px;margin:0 auto;">
-          <input id="apiKeyInput" type="password" placeholder="Paste your X-API-Key here" style="flex:1;padding:.65rem 1rem;border:1.5px solid var(--neutral-100);border-radius:8px;font-family:var(--font-primary);font-size:.875rem;outline:none;transition:border-color .2s;" onfocus="this.style.borderColor='#99CCEE'" onblur="this.style.borderColor='#DCE4EA'">
-          <button id="apiKeyBtn" style="padding:.65rem 1.25rem;background:#FF9922;color:white;border:none;border-radius:8px;font-family:var(--font-primary);font-weight:600;font-size:.875rem;cursor:pointer;transition:all .3s cubic-bezier(.83,0,.17,1);" onmouseover="this.style.background='#E8891F';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='#FF9922';this.style.transform='none'">Connect</button>
-        </div>
-      </div>
-    </div>
-    <!-- Chat interface (hidden until key entered) -->
-    <div id="chatInterface" style="display:none;max-width:720px;margin:0 auto;">
+    <div id="chatInterface" style="max-width:720px;margin:0 auto;">
       <div style="background:white;border:1px solid var(--neutral-100);border-radius:16px;overflow:hidden;box-shadow:0 8px 24px rgba(63,69,77,.06);">
         <!-- Chat header -->
         <div style="padding:1rem 1.5rem;border-bottom:1px solid var(--neutral-50);display:flex;align-items:center;justify-content:space-between;">
@@ -897,7 +884,7 @@ code { font-size: 0.8125rem; background: var(--neutral-50); padding: 0.1rem 0.4r
             <span style="font-weight:600;font-size:.875rem;">Messaging Brain</span>
             <span style="font-size:.7rem;color:var(--neutral-200);font-weight:600;">Connected</span>
           </div>
-          <button id="chatDisconnect" style="font-size:.7rem;color:var(--neutral-200);background:none;border:1px solid var(--neutral-100);border-radius:100px;padding:.2rem .6rem;cursor:pointer;font-family:var(--font-primary);font-weight:600;">Disconnect</button>
+          <span style="font-size:.7rem;color:var(--neutral-200);font-weight:600;">Live API</span>
         </div>
         <!-- Messages -->
         <div id="chatMessages" style="height:400px;overflow-y:auto;padding:1.5rem;display:flex;flex-direction:column;gap:1rem;background:var(--neutral-50);">
@@ -1344,44 +1331,10 @@ code { font-size: 0.8125rem; background: var(--neutral-50); padding: 0.1rem 0.4r
   // === CHAT ===
   (function() {
     var KG_URL = "https://knowledge-graph-api-1053548598846.us-central1.run.app";
-    var apiKey = "";
-    var keySetup = document.getElementById("chatKeySetup");
-    var chatUI = document.getElementById("chatInterface");
-    var keyInput = document.getElementById("apiKeyInput");
-    var keyBtn = document.getElementById("apiKeyBtn");
+    var apiKey = "ZEDv7F9J2xyitFMH02yO6G4bwXcBdY1dH9yQiCrz3u8=";
     var msgContainer = document.getElementById("chatMessages");
     var chatInput = document.getElementById("chatInput");
     var sendBtn = document.getElementById("chatSend");
-    var disconnectBtn = document.getElementById("chatDisconnect");
-
-    // Check for stored key
-    var stored = sessionStorage.getItem("kg_api_key");
-    if (stored) { apiKey = stored; showChat(); }
-
-    keyBtn.addEventListener("click", function() {
-      var val = keyInput.value.trim();
-      if (!val) return;
-      apiKey = val;
-      sessionStorage.setItem("kg_api_key", val);
-      showChat();
-    });
-    keyInput.addEventListener("keydown", function(e) {
-      if (e.key === "Enter") keyBtn.click();
-    });
-
-    disconnectBtn.addEventListener("click", function() {
-      apiKey = "";
-      sessionStorage.removeItem("kg_api_key");
-      keyInput.value = "";
-      chatUI.style.display = "none";
-      keySetup.style.display = "block";
-    });
-
-    function showChat() {
-      keySetup.style.display = "none";
-      chatUI.style.display = "block";
-      chatInput.focus();
-    }
 
     // Suggestions
     document.querySelectorAll(".chat-suggestion").forEach(function(el) {
